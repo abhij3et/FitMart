@@ -358,6 +358,39 @@ The React app will be available at `http://localhost:5173` and the API server at
 
 ---
 
+### Recent Backend & Client Updates (2026-03-04)
+
+- **Backend added:** a Node/Express backend now lives in the `server/` folder (Mongoose + MongoDB).
+   - `server/models/Product.js` defines the `Product` schema and includes an `image` field (string) for product images.
+   - CRUD routes are exposed under `/api/products` (`GET /api/products`, `GET /api/products/:id`, `POST`, `PUT`, `DELETE`).
+   - The MongoDB connector (`server/db.js`) supports an optional `MONGO_DB` environment variable and logs the connected database and host on startup.
+   - A seed script is provided at `server/seed.js` to insert the mock product fixtures into the database. To target a specific DB in Atlas, add `MONGO_DB=fitmart` (or your desired name) to `server/.env` and run the seed script.
+
+- **JSON safety & error handling:** the server includes JSON parse error middleware to return a clean `400` response for malformed JSON payloads (helps debugging bad requests).
+
+- **Client changes:** `client/src/pages/HomePage.jsx` now fetches products from the API (`/api/products`) instead of using inline mock arrays. Product items returned from the API include the `image` field and the front-end renders `product.image` where available.
+   - Ensure `client/.env` (or `VITE_API_BASE_URL`) points to the backend API (e.g. `http://localhost:5000/api`) or configure the Vite proxy in `client/vite.config.js` if you prefer a dev proxy.
+
+- **Dev commands (quick):**
+
+```bash
+# run backend in dev mode (from project root or server/)
+cd server
+npm run dev
+
+# seed DB (from server/)
+npm run seed
+
+# run frontend dev server (from client/)
+cd ../client
+npm run dev
+```
+
+- **Notes & recommendations:**
+   - If your seeded data does not appear in Atlas, confirm `MONGO_DB` in `server/.env` — without it the default DB may be used (e.g. `test`).
+   - Consider replacing the seed script with an idempotent upsert variant when re-running frequently to avoid destructive deletes.
+
+
 ## 📡 API Overview
 
 All API routes are prefixed with `/api`.

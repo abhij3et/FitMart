@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { signOut } from "firebase/auth";
 import { auth } from "../auth/firebase";
+import CartDrawer from "../components/CartDrawer";
+import { fmt } from "../utils/formatters";
 
 /* Products are fetched from the server (MongoDB). */
 
@@ -35,17 +37,17 @@ const PLANS = [
   },
 ];
 
-/* ─── Helpers ────────────────────────────────────────────── */
-const fmt = (n) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
-
 const Stars = ({ rating }) => (
   <span className="text-stone-500 text-xs">{"★".repeat(Math.round(rating))}{"☆".repeat(5 - Math.round(rating))}</span>
 );
 
 /* ─── ProductCard ────────────────────────────────────────── */
-function ProductCard({ product, onAdd }) {
+function ProductCard({ product, onAdd, cartItems = [], updateQty }) {
   const [added, setAdded] = useState(false);
+
+  // Find if this product is in cart and get its quantity
+  const cartItem = cartItems.find(item => item.id === (product.productId || product.id));
+  const quantity = cartItem?.qty || 0;
 
   const handleAdd = () => {
     onAdd(product);
@@ -102,15 +104,39 @@ function ProductCard({ product, onAdd }) {
               <span className="text-xs text-stone-400 line-through ml-2">{fmt(product.originalPrice)}</span>
             )}
           </div>
-          <button
-            onClick={handleAdd}
-            className={`text-xs px-4 py-2 rounded-full transition-all duration-200 ${added
-              ? "bg-stone-900 text-white"
-              : "border border-stone-300 text-stone-700 hover:bg-stone-900 hover:text-white hover:border-stone-900"
-              }`}
-          >
-            {added ? "Added ✓" : "Add to cart"}
-          </button>
+
+          {/* Quantity Selector or Add to Cart Button */}
+          {quantity > 0 ? (
+            <div className="flex items-center border border-stone-300 rounded-full overflow-hidden">
+              <button
+                onClick={() => updateQty(product.id || product.productId, -1)}
+                className="w-8 h-8 flex items-center justify-center text-stone-600 hover:bg-stone-100 transition-colors"
+                aria-label="Decrease quantity"
+              >
+                <span className="text-lg leading-none">−</span>
+              </button>
+              <span className="w-8 text-xs text-stone-900 text-center font-medium">
+                {quantity}
+              </span>
+              <button
+                onClick={() => updateQty(product.id || product.productId, 1)}
+                className="w-8 h-8 flex items-center justify-center text-stone-600 hover:bg-stone-100 transition-colors"
+                aria-label="Increase quantity"
+              >
+                <span className="text-lg leading-none">+</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleAdd}
+              className={`text-xs px-4 py-2 rounded-full transition-all duration-200 ${added
+                ? "bg-stone-900 text-white"
+                : "border border-stone-300 text-stone-700 hover:bg-stone-900 hover:text-white hover:border-stone-900"
+                }`}
+            >
+              {added ? "Added ✓" : "Add to cart"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -129,6 +155,8 @@ export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const [products, setProducts] = useState([]);
+  const [backendError, setBackendError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setTimeout(() => setVisible(true), 80);
@@ -141,15 +169,27 @@ export default function HomePage() {
 
   useEffect(() => {
     async function load() {
+      setLoading(true);
+      setBackendError(false);
+
       try {
         const res = await fetch('http://localhost:5000/api/products');
-        if (!res.ok) throw new Error('Failed to fetch products');
+
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+
         const data = await res.json();
         // map productId -> id for compatibility with existing UI
         const mapped = data.map((p) => ({ ...p, id: p.productId || p.id }));
         setProducts(mapped);
+        setBackendError(false);
       } catch (err) {
         console.error('Error loading products:', err);
+        setBackendError(true);
+        setProducts([]); // Clear products on error
+      } finally {
+        setLoading(false);
       }
     }
     load();
@@ -188,6 +228,57 @@ export default function HomePage() {
   });
 
   const firstName = user?.displayName?.split(" ")[0] || "there";
+
+  // Render product grid based on state
+  const renderProductGrid = () => {
+    if (loading) {
+      return (
+        <div className="text-center py-16 text-stone-400">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-stone-300 border-t-stone-900 mb-4"></div>
+          <p className="text-sm">Loading products...</p>
+        </div>
+      );
+    }
+
+    if (backendError) {
+      return (
+        <div className="text-center py-16 text-stone-400">
+          <p className="text-3xl mb-2">🔌</p>
+          <p className="text-sm mb-2">Cannot connect to the server</p>
+          <p className="text-xs text-stone-400">Please make sure the backend is running on port 5000</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 text-xs bg-stone-900 text-white px-4 py-2 rounded-full hover:bg-stone-700 transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      );
+    }
+
+    if (filtered.length === 0) {
+      return (
+        <div className="text-center py-16 text-stone-400">
+          <p className="text-3xl mb-2">∅</p>
+          <p className="text-sm">No products match your search.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`fade-in d3 ${visible ? "show" : ""} grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5`}>
+        {filtered.map((p) => (
+          <ProductCard
+            key={p.id}
+            product={p}
+            onAdd={addToCart}
+            cartItems={cart}  // Pass the cart array
+            updateQty={updateQty}  // Pass the updateQty function
+          />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-stone-50 font-['DM_Sans',sans-serif]">
@@ -270,38 +361,31 @@ export default function HomePage() {
             <h2 className="font-['DM_Serif_Display'] text-2xl md:text-3xl text-stone-900">
               Featured Products
             </h2>
-            <span className="text-xs text-stone-400">{filtered.length} items</span>
+            {!backendError && !loading && (
+              <span className="text-xs text-stone-400">{filtered.length} items</span>
+            )}
           </div>
 
-          {/* Category Tabs */}
-          <div className={`fade-in d2 ${visible ? "show" : ""} flex gap-2 flex-wrap mb-8`}>
-            {CATEGORIES.map((c) => (
-              <button
-                key={c.value}
-                onClick={() => setActiveCategory(c.value)}
-                className={`text-xs px-4 py-2 rounded-full transition-all ${activeCategory === c.value
-                  ? "bg-stone-900 text-white"
-                  : "bg-white border border-stone-200 text-stone-600 hover:bg-stone-50"
-                  }`}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-
-          {/* Grid */}
-          {filtered.length > 0 ? (
-            <div className={`fade-in d3 ${visible ? "show" : ""} grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5`}>
-              {filtered.map((p) => (
-                <ProductCard key={p.id} product={p} onAdd={addToCart} />
+          {/* Category Tabs - only show if backend is connected and not loading */}
+          {!backendError && !loading && (
+            <div className={`fade-in d2 ${visible ? "show" : ""} flex gap-2 flex-wrap mb-8`}>
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c.value}
+                  onClick={() => setActiveCategory(c.value)}
+                  className={`text-xs px-4 py-2 rounded-full transition-all ${activeCategory === c.value
+                    ? "bg-stone-900 text-white"
+                    : "bg-white border border-stone-200 text-stone-600 hover:bg-stone-50"
+                    }`}
+                >
+                  {c.name}
+                </button>
               ))}
             </div>
-          ) : (
-            <div className="text-center py-16 text-stone-400">
-              <p className="text-3xl mb-2">∅</p>
-              <p className="text-sm">No products match your search.</p>
-            </div>
           )}
+
+          {/* Grid */}
+          {renderProductGrid()}
         </section>
 
         {/* ── DIGITAL PLANS ── */}
@@ -426,76 +510,16 @@ export default function HomePage() {
         </div>
       </footer>
 
-      {/* ── CART DRAWER ── */}
-      <div className={`overlay fixed inset-0 bg-black/30 z-50 ${cartOpen ? "show" : ""}`} onClick={() => setCartOpen(false)} />
-
-      <aside className={`cart-slide fixed right-0 top-0 h-full w-full max-w-sm bg-white z-50 shadow-2xl flex flex-col ${cartOpen ? "open" : ""}`}>
-        <div className="flex items-center justify-between px-6 py-5 border-b border-stone-100">
-          <h2 className="font-['DM_Serif_Display'] text-lg text-stone-900">
-            Cart {cartCount > 0 && <span className="text-stone-400 text-base">({cartCount})</span>}
-          </h2>
-          <button onClick={() => setCartOpen(false)} className="text-stone-400 hover:text-stone-700 transition-colors text-xl leading-none">
-            ×
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center text-stone-400 gap-3">
-              <span className="text-4xl">🛒</span>
-              <p className="text-sm">Your cart is empty.</p>
-              <button
-                onClick={() => setCartOpen(false)}
-                className="text-xs text-stone-500 underline"
-              >
-                Continue shopping
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {cart.map((item) => (
-                <div key={item.id} className="flex gap-4 items-start py-4 border-b border-stone-100 last:border-0">
-                  <div className="w-14 h-14 bg-stone-100 rounded-xl flex items-center justify-center text-xl shrink-0 overflow-hidden">
-                    {item.image ? (
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.style.display = 'none'; }} />
-                    ) : (
-                      (item.category === "Nutrition" ? "🧴" : item.category === "Wearables" ? "⌚" : "🏋️")
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-stone-400">{item.brand}</p>
-                    <p className="text-sm font-medium text-stone-900 leading-snug">{item.name}</p>
-                    <p className="text-sm text-stone-700 mt-1">{fmt(item.price)}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <button onClick={() => removeFromCart(item.id)} className="text-stone-300 hover:text-stone-500 text-xs transition-colors">
-                      Remove
-                    </button>
-                    <div className="flex items-center gap-2 border border-stone-200 rounded-full px-2 py-0.5">
-                      <button onClick={() => updateQty(item.id, -1)} className="text-stone-500 hover:text-stone-900 w-4 text-sm">−</button>
-                      <span className="text-xs text-stone-800 min-w-4 text-center">{item.qty}</span>
-                      <button onClick={() => updateQty(item.id, 1)} className="text-stone-500 hover:text-stone-900 w-4 text-sm">+</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {cart.length > 0 && (
-          <div className="border-t border-stone-100 px-6 py-5 space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-stone-500">Subtotal</span>
-              <span className="font-medium text-stone-900">{fmt(cartTotal)}</span>
-            </div>
-            <p className="text-[10px] text-stone-400">Shipping calculated at checkout</p>
-            <button className="w-full bg-stone-900 text-white text-sm py-3.5 rounded-full hover:bg-stone-700 transition-colors">
-              Checkout →
-            </button>
-          </div>
-        )}
-      </aside>
+      {/* ── CART DRAWER COMPONENT ── */}
+      <CartDrawer
+        isOpen={cartOpen}
+        onClose={() => setCartOpen(false)}
+        cart={cart}
+        cartCount={cartCount}
+        cartTotal={cartTotal}
+        updateQty={updateQty}
+        removeFromCart={removeFromCart}
+      />
     </div >
   );
 }
