@@ -5,6 +5,19 @@ const cors = require("cors");
 const app = express();
 const port = process.env.PORT || 5000;
 
+// Display all missing variables at server startup
+const REQUIRED_ENV_VARS = ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "MONGO_DB", "MONGO_URI", "PORT"];
+const missingVars = [];
+REQUIRED_ENV_VARS.forEach((varName) =>{
+  if (!process.env[varName]) {
+    missingVars.push(varName);
+  }
+})
+if(missingVars.length > 0){
+  console.log(`⚠️ Missing environment variables: ${missingVars.join(", ")}`);
+  process.exit(1);
+}
+
 // ── Middleware ──────────────────────────────────────────────────────────────
 
 // Single CORS config — having two app.use(cors(...)) calls means the first
