@@ -27,11 +27,44 @@ const PLANS = [
   { name: "Mobility & Recovery", duration: "8 Weeks", desc: "Flexibility-first programming, ideal for desk workers", tag: null, route: "/plans/mobility-recovery" },
 ];
 
-const Stars = ({ rating }) => (
-  <span className="text-stone-500 text-xs">
-    {"★".repeat(Math.round(rating))}{"☆".repeat(5 - Math.round(rating))}
-  </span>
-);
+const Stars = ({ rating = 0, size = "sm" }) => {
+  const full = Math.floor(rating || 0);
+  const half = (rating || 0) % 1 >= 0.5 ? 1 : 0;
+  const empty = 5 - full - half;
+  const starPath = "M12 .587l3.668 7.431L24 9.748l-6 5.847L19.335 24 12 19.897 4.665 24 6 15.595 0 9.748l8.332-1.73L12 .587z";
+  const sizeClass = size === "lg" ? "w-4 h-4" : "w-3 h-3";
+
+  return (
+    <span className={`inline-flex items-center gap-0.5 ${size === "lg" ? "text-base" : "text-xs"}`} aria-hidden>
+      {Array.from({ length: full }).map((_, i) => (
+        <svg key={`full-${i}`} className={`${sizeClass} text-stone-500`} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d={starPath} fill="currentColor" />
+        </svg>
+      ))}
+
+      {half ? (() => {
+        const id = `half-${Math.random().toString(36).slice(2)}`;
+        return (
+          <svg key="half" className={`${sizeClass} text-stone-500`} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <clipPath id={id}><rect x="0" y="0" width="12" height="24" /></clipPath>
+            </defs>
+            {/* faint empty star behind */}
+            <path d={starPath} fill="currentColor" className="text-stone-300" style={{ fill: 'currentColor', opacity: 0.28 }} />
+            {/* filled half */}
+            <path d={starPath} fill="currentColor" clipPath={`url(#${id})`} />
+          </svg>
+        );
+      })() : null}
+
+      {Array.from({ length: empty }).map((_, i) => (
+        <svg key={`empty-${i}`} className={`${sizeClass} text-stone-300`} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d={starPath} fill="currentColor" style={{ opacity: 0.28 }} />
+        </svg>
+      ))}
+    </span>
+  );
+};
 
 function mapCart(cartDoc, products) {
   return cartDoc.items.map(it => {
@@ -62,7 +95,8 @@ function ProductCard({ product, onAdd, cartItems = [], updateQty }) {
 
   return (
     <div className="group bg-white border border-stone-100 rounded-2xl overflow-hidden
-                    hover:border-stone-200 hover:shadow-lg transition-all duration-300">
+            hover:border-stone-200 hover:shadow-lg transition-all duration-300
+            flex flex-col h-full">
 
       {/* Clickable image */}
       <div
@@ -96,7 +130,7 @@ function ProductCard({ product, onAdd, cartItems = [], updateQty }) {
         )}
       </div>
 
-      <div className="p-3 sm:p-5">
+      <div className="p-3 sm:p-5 flex flex-col flex-1">
         <p className="text-[9px] sm:text-[10px] tracking-[0.15em] uppercase text-stone-400 mb-1">
           {product.brand}
         </p>
@@ -104,8 +138,12 @@ function ProductCard({ product, onAdd, cartItems = [], updateQty }) {
         {/* Clickable name */}
         <h3
           onClick={() => navigate(`/product/${productId}`)}
+          onPointerDown={(e) => { if (e?.nativeEvent?.pointerType === 'touch') e.preventDefault(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/product/${productId}`); } }}
+          role="button"
+          tabIndex={0}
           className="text-xs sm:text-sm font-medium text-stone-900 leading-snug mb-1.5 sm:mb-2
-                     line-clamp-2 cursor-pointer hover:text-stone-600 transition-colors"
+                     line-clamp-2 cursor-pointer hover:text-stone-600 transition-colors select-none sm:select-auto"
         >
           {product.name}
         </h3>
@@ -115,51 +153,50 @@ function ProductCard({ product, onAdd, cartItems = [], updateQty }) {
           <span className="text-[9px] sm:text-[10px] text-stone-400">({product.reviews})</span>
         </div>
 
-        <div className="flex items-end justify-between gap-1">
-          <div className="min-w-0">
-            <span className="text-sm sm:text-base font-semibold text-stone-900">{fmt(product.price)}</span>
-            {product.originalPrice && (
-              <span className="text-[10px] sm:text-xs text-stone-400 line-through ml-1 sm:ml-2">
-                {fmt(product.originalPrice)}
-              </span>
-            )}
+        <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-1 mt-auto w-full">
+          <div className="min-w-0 pr-2 text-left sm:text-left w-full sm:w-auto">
+            <div className="text-sm sm:text-base font-semibold text-stone-900 truncate">{fmt(product.price)}</div>
+            <div className="text-[10px] sm:text-xs text-stone-400 line-through mt-0.5">
+              {product.originalPrice ? fmt(product.originalPrice) : <span className="invisible">&nbsp;</span>}
+            </div>
           </div>
 
-          {/* Qty controls or Add button */}
-          {quantity > 0 ? (
-            <div
-              className="flex items-center border border-stone-300 rounded-full overflow-hidden flex-shrink-0"
-              onClick={e => e.stopPropagation()}
-            >
-              <button
-                onClick={e => { e.stopPropagation(); updateQty(productId, -1); }}
-                className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center
-                           text-stone-600 hover:bg-stone-100 transition-colors"
+          <div className="flex items-center justify-center sm:justify-end shrink-0 w-full sm:w-auto">
+            {quantity > 0 ? (
+              <div
+                className="flex items-center border border-stone-300 rounded-full overflow-hidden"
+                onClick={e => e.stopPropagation()}
               >
-                <span className="text-base sm:text-lg leading-none">−</span>
-              </button>
-              <span className="w-6 sm:w-8 text-xs text-stone-900 text-center font-medium">{quantity}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); updateQty(productId, -1); }}
+                  className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center
+                             text-stone-600 hover:bg-stone-100 transition-colors"
+                >
+                  <span className="text-base sm:text-lg leading-none">−</span>
+                </button>
+                <span className="w-6 sm:w-8 text-xs text-stone-900 text-center font-medium">{quantity}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); updateQty(productId, 1); }}
+                  className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center
+                             text-stone-600 hover:bg-stone-100 transition-colors"
+                >
+                  <span className="text-base sm:text-lg leading-none">+</span>
+                </button>
+              </div>
+            ) : (
               <button
-                onClick={e => { e.stopPropagation(); updateQty(productId, 1); }}
-                className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center
-                           text-stone-600 hover:bg-stone-100 transition-colors"
+                onClick={handleAdd}
+                className={`relative z-10 flex-shrink-0 w-full sm:w-auto mt-2 sm:mt-0 text-center text-[10px] sm:text-xs px-2.5 sm:px-4 py-1.5 sm:py-2
+                            rounded-full transition-all duration-200 whitespace-nowrap
+                            ${added
+                    ? "bg-stone-900 text-white"
+                    : "border border-stone-300 text-stone-700 hover:bg-stone-900 hover:text-white hover:border-stone-900"
+                  }`}
               >
-                <span className="text-base sm:text-lg leading-none">+</span>
+                {added ? "Added ✓" : "Add to Cart"}
               </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleAdd}
-              className={`flex-shrink-0 text-[10px] sm:text-xs px-2.5 sm:px-4 py-1.5 sm:py-2
-                          rounded-full transition-all duration-200 whitespace-nowrap
-                          ${added
-                  ? "bg-stone-900 text-white"
-                  : "border border-stone-300 text-stone-700 hover:bg-stone-900 hover:text-white hover:border-stone-900"
-                }`}
-            >
-              {added ? "Added ✓" : "Add"}
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
